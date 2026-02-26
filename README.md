@@ -379,3 +379,5 @@ Based on [clawdbot-railway-template](https://github.com/vignesh07/clawdbot-railw
 - ✅ Comprehensive health monitoring
 - ✅ Automatic migration from legacy templates
 - ✅ Security hardening (secret redaction, path validation)
+
+<!-- TEST COMMENT: PR created by Gene via gh on 2026-02-26T22:46:30Z -->
