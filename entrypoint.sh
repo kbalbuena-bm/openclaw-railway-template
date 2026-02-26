@@ -24,12 +24,24 @@ fi
 
 # ===== NEW: Set up GitHub + Railway credentials =====
 # This runs every time the container starts, so your tokens are always ready
-if [ -n "${GITHUB_TOKEN:-}" ]; then
+
+# Set up git identity
+gosu openclaw git config --global user.email "${GIT_USER_EMAIL:-openclaw@users.noreply.github.com}"
+gosu openclaw git config --global user.name "${GIT_USER_NAME:-OpenClaw}"
+
+# Authenticate GitHub CLI (gh) — this is what lets OpenClaw create PRs
+if [ -n "${GH_TOKEN:-}" ]; then
+  echo "[entrypoint] GH_TOKEN detected — gh CLI authenticated"
+  # gh CLI reads GH_TOKEN automatically, no extra setup needed
+  # Also configure git to use this token for cloning
+  gosu openclaw git config --global url."https://${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
+elif [ -n "${GITHUB_TOKEN:-}" ]; then
+  # Fallback: use GITHUB_TOKEN if GH_TOKEN not set
+  export GH_TOKEN="${GITHUB_TOKEN}"
   gosu openclaw git config --global url."https://${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
-  gosu openclaw git config --global user.email "${GIT_USER_EMAIL:-openclaw@users.noreply.github.com}"
-  gosu openclaw git config --global user.name "${GIT_USER_NAME:-OpenClaw}"
-  echo "[entrypoint] GitHub credentials configured"
+  echo "[entrypoint] GITHUB_TOKEN detected — gh CLI authenticated (via fallback)"
 fi
+
 if [ -n "${RAILWAY_TOKEN:-}" ]; then
   echo "[entrypoint] Railway token detected — CLI ready"
 fi
