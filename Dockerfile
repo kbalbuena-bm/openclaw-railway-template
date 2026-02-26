@@ -1,6 +1,5 @@
 # Build openclaw from source to avoid npm packaging gaps (some dist files are not shipped).
 FROM node:22-bookworm AS openclaw-build
-
 # Dependencies needed for openclaw build
 RUN apt-get update \
   && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
@@ -11,15 +10,11 @@ RUN apt-get update \
     make \
     g++ \
   && rm -rf /var/lib/apt/lists/*
-
 # Install Bun (openclaw build uses it)
 RUN curl -fsSL https://bun.sh/install | bash
 ENV PATH="/root/.bun/bin:${PATH}"
-
 RUN corepack enable
-
 WORKDIR /openclaw
-
 # OpenClaw version control:
 # - Set OPENCLAW_VERSION Railway variable to pin a specific tag/branch (e.g., v2026.2.15)
 # - If not set, auto-detects the latest stable release via 3-tier cascade:
@@ -57,7 +52,6 @@ RUN set -eu; \
     fi; \
   fi; \
   git clone --depth 1 --branch "${REF}" https://github.com/openclaw/openclaw.git .
-
 # Patch: relax version requirements for packages that may reference unpublished versions.
 # Apply to all extension package.json files to handle workspace protocol (workspace:*).
 RUN set -eux; \
@@ -65,17 +59,13 @@ RUN set -eux; \
     sed -i -E 's/"openclaw"[[:space:]]*:[[:space:]]*">=[^"]+"/"openclaw": "*"/g' "$f"; \
     sed -i -E 's/"openclaw"[[:space:]]*:[[:space:]]*"workspace:[^"]+"/"openclaw": "*"/g' "$f"; \
   done
-
 RUN pnpm install --no-frozen-lockfile
 RUN pnpm build
 ENV OPENCLAW_PREFER_PNPM=1
 RUN pnpm ui:install && pnpm ui:build
-
-
 # Runtime image
 FROM node:22-bookworm
 ENV NODE_ENV=production
-
 RUN apt-get update \
   && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     ca-certificates \
@@ -87,42 +77,47 @@ RUN apt-get update \
     build-essential \
   && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
+# ===== NEW: Install Railway CLI =====
+RUN curl -fsSL https://railway.com/install.sh | bash
 
+# ===== NEW: Configure git to use GITHUB_TOKEN for pushing =====
+# This tells git: "whenever you talk to github.com, use my token as the password"
+RUN git config --system credential.helper store \
+  && printf '#!/bin/sh\n\
+if [ -n "$GITHUB_TOKEN" ]; then\n\
+  git config --global url."https://${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"\n\
+fi\n\
+if [ -n "$RAILWAY_TOKEN" ]; then\n\
+  railway version 2>/dev/null || true\n\
+fi\n' > /usr/local/bin/setup-credentials.sh \
+  && chmod +x /usr/local/bin/setup-credentials.sh
+
+WORKDIR /app
 # Wrapper deps
 RUN corepack enable
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --prod --frozen-lockfile && pnpm store prune
-
 # Copy built openclaw
 COPY --from=openclaw-build /openclaw /openclaw
-
 # Provide an openclaw executable
 RUN printf '%s\n' '#!/usr/bin/env bash' 'exec node /openclaw/dist/entry.js "$@"' > /usr/local/bin/openclaw \
   && chmod +x /usr/local/bin/openclaw
-
 COPY src ./src
 COPY entrypoint.sh ./entrypoint.sh
-
 # Create openclaw user, set up directories, install Homebrew as that user
 RUN useradd -m -s /bin/bash openclaw \
   && chown -R openclaw:openclaw /app \
   && mkdir -p /data && chown openclaw:openclaw /data \
   && mkdir -p /home/linuxbrew/.linuxbrew && chown -R openclaw:openclaw /home/linuxbrew
-
 USER openclaw
 RUN NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-
 ENV PATH="/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:${PATH}"
 ENV HOMEBREW_PREFIX="/home/linuxbrew/.linuxbrew"
 ENV HOMEBREW_CELLAR="/home/linuxbrew/.linuxbrew/Cellar"
 ENV HOMEBREW_REPOSITORY="/home/linuxbrew/.linuxbrew/Homebrew"
-
 ENV PORT=8080
 EXPOSE 8080
-
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
   CMD curl -f http://localhost:8080/setup/healthz || exit 1
-
 USER root
 ENTRYPOINT ["./entrypoint.sh"]
