@@ -80,18 +80,6 @@ RUN apt-get update \
 # ===== NEW: Install Railway CLI =====
 RUN curl -fsSL https://railway.com/install.sh | bash
 
-# ===== NEW: Configure git to use GITHUB_TOKEN for pushing =====
-# This tells git: "whenever you talk to github.com, use my token as the password"
-RUN git config --system credential.helper store \
-  && printf '#!/bin/sh\n\
-if [ -n "$GITHUB_TOKEN" ]; then\n\
-  git config --global url."https://${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"\n\
-fi\n\
-if [ -n "$RAILWAY_TOKEN" ]; then\n\
-  railway version 2>/dev/null || true\n\
-fi\n' > /usr/local/bin/setup-credentials.sh \
-  && chmod +x /usr/local/bin/setup-credentials.sh
-
 WORKDIR /app
 # Wrapper deps
 RUN corepack enable
